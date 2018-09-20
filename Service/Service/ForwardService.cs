@@ -26,6 +26,9 @@ namespace IMS.Service.Service
             dto.TaskTitle = entity.Task.Title;
             dto.UserId = entity.UserId;
             dto.UserName = entity.User.Name;
+            dto.Amount = entity.User.Amount;
+            dto.TakeCashAmount = entity.User.TakeCashAmount;
+            dto.BonusAmount = entity.User.BonusAmount;
             return dto;
         }
 
@@ -43,7 +46,7 @@ namespace IMS.Service.Service
                     return -2;
                 }
 
-                if ((await dbc.GetIdAsync<UserEntity>(u => u.Id == userId)) <= 0)
+                if (string.IsNullOrEmpty(await dbc.GetParameterAsync<UserEntity>(u => u.Id == userId, u => u.Mobile)))
                 {
                     return -3;
                 }
@@ -54,21 +57,32 @@ namespace IMS.Service.Service
                     return -4;
                 }
 
-                ForwardEntity forward = new ForwardEntity();
-                forward.TaskId = taskId;
-                forward.UserId = userId;
+                ForwardEntity forward = await dbc.GetAll<ForwardEntity>().Include(f=>f.State).SingleOrDefaultAsync(f=>f.UserId==userId && f.TaskId==taskId);
+                if(forward==null)
+                {
+                    forward = new ForwardEntity();
+                    forward.TaskId = taskId;
+                    forward.UserId = userId;
+                    forward.StateId = stateId;
+                    dbc.Forwards.Add(forward);
+                    await dbc.SaveChangesAsync();
+                    return forward.Id;
+                }
+                if(forward.State.Name != "未通过审核")
+                {
+                    return -5;
+                }
                 forward.StateId = stateId;
-                dbc.Forwards.Add(forward);
-                await dbc.SaveChangesAsync();
+                await dbc.SaveChangesAsync();               
                 return forward.Id;
             }
         }
 
-        public async Task<long> ForwardAsync(long id, string imgUrl)
+        public async Task<long> ForwardAsync(long taskId, long userId, string imgUrl)
         {
             using (MyDbContext dbc = new MyDbContext())
             {
-                ForwardEntity forward = await dbc.GetAll<ForwardEntity>().Include(f=>f.Task).SingleOrDefaultAsync(t => t.Id == id);
+                ForwardEntity forward = await dbc.GetAll<ForwardEntity>().Include(f=>f.Task).SingleOrDefaultAsync(t => t.UserId == userId && t.TaskId==taskId);
                 if (forward == null)
                 {
                     return -1;
@@ -78,7 +92,7 @@ namespace IMS.Service.Service
                     return -2;
                 }
 
-                if((await dbc.GetIdAsync<UserEntity>(u=>u.Id==forward.UserId))<=0)
+                if(string.IsNullOrEmpty(await dbc.GetParameterAsync<UserEntity>(u => u.Id == userId, u => u.Mobile)))
                 {
                     return -3;
                 }
@@ -104,7 +118,7 @@ namespace IMS.Service.Service
                 {
                     return -1;
                 }
-                long stateId = await dbc.GetIdAsync<ForwardStateEntity>(f => f.Name == "转发失败");                
+                long stateId = await dbc.GetIdAsync<ForwardStateEntity>(f => f.Name == "未通过审核");                
                 if (stateId <= 0)
                 {
                     return -2;
@@ -115,7 +129,7 @@ namespace IMS.Service.Service
                     await dbc.SaveChangesAsync();
                     return -3;
                 }
-                stateId= await dbc.GetIdAsync<ForwardStateEntity>(f => f.Name == "转发成功");
+                stateId= await dbc.GetIdAsync<ForwardStateEntity>(f => f.Name == "任务完成");
                 forward.StateId = stateId;
                 UserEntity user = await dbc.GetAll<UserEntity>().SingleOrDefaultAsync(u=>u.Id==forward.UserId);
                 if(user==null)
@@ -229,7 +243,7 @@ namespace IMS.Service.Service
             }
         }
 
-        public async Task<ForwardSearchResult> GetModelListAsync(string keyword, int pageIndex, int pageSize)
+        public async Task<ForwardSearchResult> GetModelListAsync(string keyword, long? stateId, DateTime? startTime, DateTime? endTime, int pageIndex, int pageSize)
         {
             using (MyDbContext dbc = new MyDbContext())
             {
@@ -237,7 +251,19 @@ namespace IMS.Service.Service
                 IQueryable<ForwardEntity> forwards = dbc.GetAll<ForwardEntity>();
                 if(!string.IsNullOrEmpty(keyword))
                 {
-                    forwards = forwards.Where(f=>f.Task.Title.Contains(keyword));
+                    forwards = forwards.Where(f=>f.User.Name.Contains(keyword));
+                }
+                if(stateId!=null)
+                {
+                    forwards = forwards.Where(f=>f.StateId==stateId);
+                }
+                if (startTime != null)
+                {
+                    forwards = forwards.Where(f => f.CreateTime >= startTime);
+                }
+                if (endTime != null)
+                {
+                    forwards = forwards.Where(f => SqlFunctions.DateDiff("day", endTime, f.CreateTime) <= 0);
                 }
                 result.PageCount = (int)Math.Ceiling((await forwards.LongCountAsync()) * 1.0f / pageSize);
                 var forwordResult = await forwards.Include(f=>f.User).Include(f=>f.Task).Include(f=>f.State).OrderByDescending(a => a.CreateTime).Skip((pageIndex - 1) * pageSize).Take(pageSize).ToListAsync();

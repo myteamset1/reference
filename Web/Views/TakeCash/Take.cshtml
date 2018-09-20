@@ -35,7 +35,7 @@
     </div>
 
     <!--按钮-->
-    <div id="take" class="concact-button">确认提现</div>
+    <div id="take" class="concact-button">申请提现</div>
 
     <script type="text/javascript" charset="utf-8" src="/Task/js/flexible.js"></script>
     <script src="~/Task/js/jquery.min.js"></script>
@@ -43,48 +43,45 @@
     <script src="~/assets/layer/layer.js"></script>
     <script>
         $(function () {
-            var id = $("#id").val();
-            $("#accept").click(function () {
-                $.ajax({
-                    url: "/task/accept",
-                    type: "post",
-                    data: { id: id },
-                    success: function (res) {
-                        if (res.status == 1) {
-                            layer.alert(res.msg, { icon: 1, title: '提示框' }, function () {
-                                window.location.reload();
-                            });
-                        }
-                        else if (res.status == 0) {
-                            layer.alert(res.msg, { icon: 1 });
-                        }
-                    },
-                    error: function () {
-                        layer.msg("网络错误", { icon: 1 });
-                    }
-                });
-            });
+            $("#take").click(function () { 
+                var payTypeId = $("#payTypeId").val();
+                var amount = $("#amount").val();
 
-            $("#giveUp").click(function () {
+                var reg = /^[+]{0,1}(\d+)$|^[+]{0,1}(\d+\.\d+)$/;
+                if (!reg.test(amount)) {
+                    layer.msg('请输入正确的金额', { icon: 1 });
+                    return;
+                }
+                if (amount <= 0) {
+                    layer.msg('提现金额必须大于零', { icon: 1 });
+                    return;
+                }
+
                 $.ajax({
-                    url: "/task/giveup",
+                    url: "/takecash/take",
                     type: "post",
-                    data: { id: id },
+                    data: { payTypeId: payTypeId, amount: amount },
                     success: function (res) {
                         if (res.status == 1) {
                             layer.alert(res.msg, { icon: 1, title: '提示框' }, function () {
                                 window.location.reload();
                             });
                         }
+                        else if (res.data=="/user/bindinfo")
+                        {
+                            layer.alert(res.msg, { icon: 1, title: '提示框' }, function () {
+                                window.location.href = res.data;
+                            });
+                        }
                         else if (res.status == 0) {
-                            layer.alert(res.msg, { icon: 1 });
+                            layer.msg(res.msg, { icon: 1 });
                         }
                     },
                     error: function () {
                         layer.msg("网络错误", { icon: 1 });
                     }
                 });
-            });
+            });                        
         });
     </script>
 </body>
